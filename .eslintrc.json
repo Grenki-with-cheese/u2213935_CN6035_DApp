@@ -1,0 +1,30 @@
+{
+    "root": true,
+    "extends": [
+        "react-app",
+        "react-app/jest",
+        "prettier"
+    ],
+    "rules": {
+        "no-unused-vars": "warn",
+        "no-undef": "warn"
+    },
+    "ignorePatterns": [
+        "node_modules/",
+        "build/",
+        "dist/",
+        "artifacts/",
+        "cache/",
+        "src/abis/"
+    ],
+    "overrides": [
+        {
+            "files": ["scripts/**/*.js", "test/**/*.js", "hardhat.config.js"],
+            "env": {"node": true, "mocha": true},
+            "globals": {"artifacts": "readonly", "ethers": "readonly","web3": "readonly"
+            },
+            "rules": {"no-undef":"off"}
+            }
+    ]
+
+}

@@ -161,4 +161,52 @@ describe('Escrow', () => {
             expect(await escrow.getBalance()).to.be.equal(0)
         })
     })
+    describe('Events', () => {
+        const setupSecondListing = async () => {
+            await realEstate.connect(seller).mint('ipfs://second')
+            await realEstate.connect(seller).approve(escrow.address, 2)
+        }
+        it('Emits Listed when a seller lists property', async ()=>{
+            await setupSecondListing()
+            await expect(escrow.connect(seller).list(2, buyer.address, tokens(20), tokens(10)))
+                .to.emit(escrow, 'Listed')
+                .withArgs(2, buyer.address, tokens(20), tokens(10));
+        })
+        it('Emits EarnestDeposited when a buyer deposits earnest money', async ()=>{
+            await expect(escrow.connect(buyer).depositEarnest(1, { value: tokens(5) }))
+                .to.emit(escrow, 'EarnestDeposited')
+                .withArgs(1, buyer.address, tokens(5));
+        });
+
+        it('Emits InspectionUpdated when the inspector updates the inspection status', async ()=>{
+            await expect(escrow.connect(inspector).updateInspectionStatus(1, true))
+                .to.emit(escrow, 'InspectionUpdated')
+                .withArgs(1, inspector.address, true);
+        });
+        it('Emits SaleApproved when a party approves the sale', async ()=>{
+            await expect(escrow.connect(buyer).approveSale(1))
+                .to.emit(escrow, 'SaleApproved')
+                .withArgs(1, buyer.address);
+        });
+        it('Emits SaleFinalized when the seller finalizes the sale', async ()=>{
+            // Setup approvals and deposits
+            await escrow.connect(buyer).depositEarnest(1, { value: tokens(5) })
+            await escrow.connect(inspector).updateInspectionStatus(1, true)
+            await escrow.connect(buyer).approveSale(1)
+            await escrow.connect(seller).approveSale(1)
+            await escrow.connect(lender).approveSale(1)
+            await lender.sendTransaction({ to: escrow.address, value: tokens(5) })
+            await expect(escrow.connect(seller).finalizeSale(1))
+                .to.emit(escrow, 'SaleFinalised')
+                .withArgs(1, buyer.address, tokens(10));
+        });
+
+        it('Emits SaleCancelled when the seller cancels the sale', async ()=>{
+            await escrow.connect(buyer).depositEarnest(1, { value: tokens(5) })
+            await expect(escrow.cancelSale(1))
+                .to.emit(escrow, 'SaleCancelled')
+                .withArgs(1, false);
+        });
+    })
+
 })
