@@ -7,11 +7,15 @@ import Search from './components/Search';
 import Home from './components/Home';
 
 // ABIs
-import RealEstate from './abis/RealEstate.json'
+//import RealEstate from './abis/RealEstate.json'
 import Escrow from './abis/Escrow.json'
 
 // Config
 import config from './config.json';
+
+//hybrid backend
+//override via REACT_APP_BACKEND_URL when deploying.
+const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:4000'
 
 function App() {
   const [provider, setProvider] = useState(null)
@@ -23,33 +27,54 @@ function App() {
   const [home, setHome] = useState({})
   const [toggle, setToggle] = useState(false);
 
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
+
+
   const loadBlockchainData = async () => {
-    const provider = new ethers.providers.Web3Provider(window.ethereum)
-    setProvider(provider)
-    const network = await provider.getNetwork()
+      setLoading(true)
+      setError(null)
 
-    const realEstate = new ethers.Contract(config[network.chainId].realEstate.address, RealEstate, provider)
-    const totalSupply = await realEstate.totalSupply()
-    const homes = []
+      try {
+        //wallet provider for write transactions still function the same but go through the backend now
+        const provider = new ethers.providers.Web3Provider(window.ethereum)
+        setProvider(provider)
+        const network = await provider.getNetwork()
 
-    for (var i = 1; i <= totalSupply; i++) {
-      const uri = await realEstate.tokenURI(i)
-      const response = await fetch(uri)
-      const metadata = await response.json()
-      homes.push(metadata)
+        //fetch properties from backend which reads totalSupplu and tokenURI from the chain and merges with off-chain metadata
+        const response = await fetch(`${BACKEND_URL}/api/properties`)
+        if (!response.ok) {
+          const detail = await response.json().catch(() => ({}))
+          throw new Error(
+            detail.error || `Backend returned HTTP ${response.status}`,
+          )
+        }
+        const properties = await response.json()
+        setHomes(properties)
+
+        //escrow contract is needed for write actions in the modal.
+        const escrow = new ethers.Contract(
+          config[network.chainId].escrow.address,
+          Escrow,
+          provider,
+        )
+        setEscrow(escrow)
+
+        window.ethereum.on('accountsChanged', async () => {
+          const accounts = await window.ethereum.request({
+            method: 'eth_requestAccounts',
+          });
+          const account = ethers.utils.getAddress(accounts[0])
+          setAccount(account);
+        })
+      } catch (err) {
+        console.error('Failed to load DApp data:', err)
+        setError(err.message || 'Failed to load DApp data')
+      } finally {
+        setLoading(false)
+      }
     }
 
-    setHomes(homes)
-
-    const escrow = new ethers.Contract(config[network.chainId].escrow.address, Escrow, provider)
-    setEscrow(escrow)
-
-    window.ethereum.on('accountsChanged', async () => {
-      const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
-      const account = ethers.utils.getAddress(accounts[0])
-      setAccount(account);
-    })
-  }
 
   useEffect(() => {
     loadBlockchainData()
@@ -70,6 +95,25 @@ function App() {
         <h3>Homes For You</h3>
 
         <hr />
+        
+        {loading && <p>Loading properties&hellip;</p>}
+        {error && (
+          <div role="alert" style={{ color: '#b00020', padding: '1em 0' }}>
+            <strong>Could not load properties.</strong>
+            <br />
+            {error}
+            <br />
+            <small>
+              Is the backend running? <code>cd backend &amp;&amp; npm run dev</code>
+            </small>
+          </div>
+        )}
+
+        {!loading && !error && homes.length === 0 && (
+          <p>No properties listed yet. Run the deploy script.</p>
+        )}
+        
+
 
         <div className='cards'>
           {homes.map((home, index) => (
