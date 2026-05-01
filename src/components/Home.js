@@ -1,4 +1,3 @@
-import { ethers } from 'ethers';
 import { useEffect, useState } from 'react';
 
 import close from '../assets/close.svg';
@@ -15,6 +14,24 @@ const Home = ({ home, provider, account, escrow, togglePop }) => {
     const [seller, setSeller] = useState(null)
 
     const [owner, setOwner] = useState(null)
+
+    //single pending flag, only one action runs at a time per modal
+    const [pending, setPending] = useState(false)
+    const [txError, setTxError] = useState(null)
+
+    //wraps each tx handler so metamask rejections/rpc errors show as state instead of silent dead clicks, flips pending so the button disables itself
+    const runTx = async (fn) => {
+        setTxError(null)
+        setPending(true)
+        try {
+            await fn()
+        } catch (err) {
+            console.error('Transaction failed:', err)
+            setTxError(err?.reason || err?.message || 'Transaction failed')
+        } finally {
+            setPending(false)
+        }
+    }
 
     const fetchDetails = async () => {
         // -- Buyer
@@ -57,7 +74,7 @@ const Home = ({ home, provider, account, escrow, togglePop }) => {
         setOwner(owner)
     }
 
-    const buyHandler = async () => {
+    const buyHandler = () => runTx(async () => {
         const escrowAmount = await escrow.escrowAmount(home.id)
         const signer = await provider.getSigner()
 
@@ -70,9 +87,9 @@ const Home = ({ home, provider, account, escrow, togglePop }) => {
         await transaction.wait()
 
         setHasBought(true)
-    }
+    })
 
-    const inspectHandler = async () => {
+    const inspectHandler = () => runTx(async () => {
         const signer = await provider.getSigner()
 
         // Inspector updates status
@@ -80,9 +97,9 @@ const Home = ({ home, provider, account, escrow, togglePop }) => {
         await transaction.wait()
 
         setHasInspected(true)
-    }
+    })
 
-    const lendHandler = async () => {
+    const lendHandler = () => runTx(async () => {
         const signer = await provider.getSigner()
 
         // Lender approves...
@@ -94,9 +111,9 @@ const Home = ({ home, provider, account, escrow, togglePop }) => {
         await signer.sendTransaction({ to: escrow.address, value: lendAmount.toString(), gasLimit: 60000 })
 
         setHasLended(true)
-    }
+    })
 
-    const sellHandler = async () => {
+    const sellHandler = () => runTx(async () => {
         const signer = await provider.getSigner()
 
         // Seller approves...
@@ -108,7 +125,7 @@ const Home = ({ home, provider, account, escrow, togglePop }) => {
         await transaction.wait()
 
         setHasSold(true)
-    }
+    })
 
     useEffect(() => {
         fetchDetails()
@@ -139,26 +156,32 @@ const Home = ({ home, provider, account, escrow, togglePop }) => {
                     ) : (
                         <div>
                             {(account === inspector) ? (
-                                <button className='home__buy' onClick={inspectHandler} disabled={hasInspected}>
-                                    Approve Inspection
+                                <button className='home__buy' onClick={inspectHandler} disabled={hasInspected || pending}>
+                                    {pending ? 'Confirming...' : 'Approve Inspection'}
                                 </button>
                             ) : (account === lender) ? (
-                                <button className='home__buy' onClick={lendHandler} disabled={hasLended}>
-                                    Approve & Lend
+                                <button className='home__buy' onClick={lendHandler} disabled={hasLended || pending}>
+                                    {pending ? 'Confirming...' : 'Approve & Lend'}
                                 </button>
                             ) : (account === seller) ? (
-                                <button className='home__buy' onClick={sellHandler} disabled={hasSold}>
-                                    Approve & Sell
+                                <button className='home__buy' onClick={sellHandler} disabled={hasSold || pending}>
+                                    {pending ? 'Confirming...' : 'Approve & Sell'}
                                 </button>
                             ) : (
-                                <button className='home__buy' onClick={buyHandler} disabled={hasBought}>
-                                    Buy
+                                <button className='home__buy' onClick={buyHandler} disabled={hasBought || pending}>
+                                    {pending ? 'Confirming...' : 'Buy'}
                                 </button>
                             )}
 
                             <button className='home__contact'>
                                 Contact agent
                             </button>
+                        </div>
+                    )}
+
+                    {txError && (
+                        <div role="alert" style={{ color: '#b00020', marginTop: '0.75em' }}>
+                            <strong>Transaction failed:</strong> {txError}
                         </div>
                     )}
 
@@ -185,7 +208,7 @@ const Home = ({ home, provider, account, escrow, togglePop }) => {
                 <button onClick={togglePop} className="home__close">
                     <img src={close} alt="Close" />
                 </button>
-            </div>
+            </div >
         </div >
     );
 }
